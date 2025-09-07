@@ -47,7 +47,7 @@ int main()
     mppi::MPPI mppi_controller(params);
 
     // ------------------ 3. 初始 USV 状态 ------------------
-    std::vector<float> state = {radius, 0.0f, 0.0f, u_target, 0.0f, 0.0f};
+    std::vector<float> state = {radius, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     std::vector<float> objects; // 空障碍物
 
     // ------------------ 4. 输出文件 ------------------
