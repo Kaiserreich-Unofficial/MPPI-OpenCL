@@ -153,12 +153,18 @@ __kernel void mppi(uint N, __constant float *params, __constant float *state,
   const float delta = params[0];
   const float sigma_Tl = params[1];
   const float sigma_Tr = params[2];
-  const float vehicle_length = params[3];
+  const float Tl_min = params[3];
+  const float Tl_max = params[4];
+  const float Tr_min = params[5];
+  const float Tr_max = params[6];
+  /*
+  const float vehicle_length = params[7];
   const float reaction_time = params[9];
   const float go_around = params[10];
   const float safe_dist_coef = params[11];
   const float safe_dist_min = params[12];
-  const float stop_velocity = params[13];
+  const float stop_velocity = params[13];*/
+  const float vehicle_length, reaction_time, go_around, safe_dist_coef, safe_dist_min, stop_velocit = 0.f;
 
   const size_t K = get_global_size(0);
   const size_t global_id = get_global_id(0);
@@ -192,6 +198,8 @@ __kernel void mppi(uint N, __constant float *params, __constant float *state,
 
     float Tl = inputs[offset_i] + n_Tl;
     float Tr = inputs[offset_i + 1] + n_Tr;
+    Tl = clamp(Tl, Tl_min, Tl_max);
+    Tr = clamp(Tr, Tr_min, Tr_max);
 
     float k1[6], k2[6], k3[6], k4[6];
     dynamics(x, y, psi, u, v, r, Tl, Tr, k1);
@@ -213,7 +221,7 @@ __kernel void mppi(uint N, __constant float *params, __constant float *state,
     r += delta / 6.0f * (k1[5] + 2 * k2[5] + 2 * k3[5] + k4[5]);
 
     // 三元运算裁剪到 [0, 2*pi]
-    float M_PI = 3.1415927f;
+    const float M_PI = 3.1415927f;
     psi = (psi >= 2.0f * M_PI) ? (psi - 2.0f * M_PI)
                                : ((psi < 0.0f) ? (psi + 2.0f * M_PI) : psi);
 

@@ -25,6 +25,10 @@ MPPI::MPPI(Params params)
     _params.push_back(_p.delta);
     _params.push_back(_p.sigma_Tl);
     _params.push_back(_p.sigma_Tr);
+    _params.push_back(_p.Tl_min);
+    _params.push_back(_p.Tl_max);
+    _params.push_back(_p.Tr_min);
+    _params.push_back(_p.Tr_max);
 
     // state
     _state = new float[_state_size];
@@ -368,6 +372,10 @@ std::vector<Waypoint> MPPI::run(const std::vector<float> &state,
     {
         float Tl = _inputs[offset_i];
         float Tr = _inputs[offset_i + 1];
+
+        // 限制推进器输入(projection)
+        Tl = std::max(_p.Tl_min, std::min(Tl, _p.Tl_max));
+        Tr = std::max(_p.Tr_min, std::min(Tr, _p.Tr_max));
 
         // 动力学函数 lambda: f(state, input) -> derivative
         auto dynamics = [&](float x, float y, float psi, float u, float v, float r,

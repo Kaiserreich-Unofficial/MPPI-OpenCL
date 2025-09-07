@@ -24,6 +24,10 @@ namespace mppi
         float lambda = 1.0;
         float sigma_Tl = 0.2;
         float sigma_Tr = 0.2;
+        float Tl_min = -0.5;
+        float Tl_max = 0.5;
+        float Tr_min = -0.5;
+        float Tr_max = 0.5;
     } Params;
 
     class Waypoint
