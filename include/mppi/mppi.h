@@ -19,7 +19,7 @@ namespace mppi
         uint64_t platform_id = 0;
         uint64_t local_size = 128;
         uint64_t multiplier = 15;
-        uint64_t N = 50;
+        uint64_t horizon = 50;
         float delta = 0.05;
         float lambda = 1.0;
         float sigma_Tl = 0.2;
@@ -28,6 +28,13 @@ namespace mppi
         float Tl_max = 0.5;
         float Tr_min = -0.5;
         float Tr_max = 0.5;
+        float vehicle_length = 1.3; // 船体长度
+        float reaction_time = 0.5;  // 预测反应时间
+        float safe_dist_coef = 1.5; // 障碍物安全距离系数
+        float safe_dist_min = 1.5;  // 障碍物最小安全距离
+        bool enable_nln = false;
+        float state_weights[6] = {100.0f, 100.0f, 1.0f, .1f, .1f, .1f};
+        float input_weights[2] = {1e-5, 1e-5};
     } Params;
 
     class Waypoint
@@ -63,7 +70,7 @@ namespace mppi
 
     private:
         Params _p;
-        uint64_t _K;
+        uint64_t _num_rollout;
         std::vector<float> _params;
 
         cl_platform_id *_platforms;

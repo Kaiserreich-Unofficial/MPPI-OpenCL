@@ -19,7 +19,7 @@ MPPI::MPPI(Params params)
 {
     // params
     _p = params;
-    _K = _p.local_size * _p.multiplier;
+    _num_rollout = _p.local_size * _p.multiplier;
 
     // params buffer
     _params.push_back(_p.delta);
@@ -29,6 +29,10 @@ MPPI::MPPI(Params params)
     _params.push_back(_p.Tl_max);
     _params.push_back(_p.Tr_min);
     _params.push_back(_p.Tr_max);
+    _params.push_back(_p.vehicle_length);
+    _params.push_back(_p.reaction_time);
+    _params.push_back(_p.safe_dist_coef);
+    _params.push_back(_p.safe_dist_min);
 
     // state
     _state = new float[_state_size];
@@ -38,14 +42,14 @@ MPPI::MPPI(Params params)
     // seed
     _rg_seed = std::mt19937(_rd());
     _dist_seed = std::uniform_int_distribution<uint32_t>(0, std::numeric_limits<uint32_t>::max());
-    _seed = new uint32_t[_K];
-    for (int i = 0; i < _K; i++)
+    _seed = new uint32_t[_num_rollout];
+    for (int i = 0; i < _num_rollout; i++)
     {
         _seed[i] = _dist_seed(_rg_seed);
     }
 
     // inputs
-    _inputs_size = _input_dim * _p.N;
+    _inputs_size = _input_dim * _p.horizon;
     _inputs = new float[_inputs_size];
     for (int i = 0; i < _inputs_size; i++)
         _inputs[i] = 0.0;
@@ -55,14 +59,14 @@ MPPI::MPPI(Params params)
     //_rg_a = std::mt19937(_rd());
     //_dist_s = std::normal_distribution<float>(0.0, _p.sigma_Tl);
     //_dist_a = std::normal_distribution<float>(0.0, _p.sigma_Tr);
-    _noise_size = _K * _inputs_size;
+    _noise_size = _num_rollout * _inputs_size;
     _noise = new float[_noise_size];
     for (int i = 0; i < _noise_size; i++)
         _noise[i] = 0.0;
 
     // costs
-    _costs = new float[_K];
-    for (int i = 0; i < _K; i++)
+    _costs = new float[_num_rollout];
+    for (int i = 0; i < _num_rollout; i++)
         _costs[i] = 0.0;
 
     // get a platform
@@ -139,7 +143,7 @@ MPPI::MPPI(Params params)
         throw std::runtime_error("unable to create OpenCL buffer");
     // seed buffer
     __seed = clCreateBuffer(_context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-                            _K * sizeof(cl_uint), _seed, &ret);
+                            _num_rollout * sizeof(cl_uint), _seed, &ret);
     if (ret != CL_SUCCESS)
         throw std::runtime_error("unable to create OpenCL buffer");
     // noise buffer
@@ -149,12 +153,12 @@ MPPI::MPPI(Params params)
         throw std::runtime_error("unable to create OpenCL buffer");
     // costs buffer
     __costs = clCreateBuffer(_context, CL_MEM_WRITE_ONLY | CL_MEM_COPY_HOST_PTR,
-                             _K * sizeof(cl_float), _costs, &ret);
+                             _num_rollout * sizeof(cl_float), _costs, &ret);
     if (ret != CL_SUCCESS)
         throw std::runtime_error("unable to create OpenCL buffer");
 
     // set kernel arguments
-    ret = clSetKernelArg(_kernel, 0, sizeof(cl_uint), (void *)&_p.N);
+    ret = clSetKernelArg(_kernel, 0, sizeof(cl_uint), (void *)&_p.horizon);
     ret |= clSetKernelArg(_kernel, 1, sizeof(cl_mem), (void *)&__params);
     ret |= clSetKernelArg(_kernel, 2, sizeof(cl_mem), (void *)&__state);
     ret |= clSetKernelArg(_kernel, 5, sizeof(cl_uint), (void *)&_waypoint_dim);
@@ -164,6 +168,18 @@ MPPI::MPPI(Params params)
     ret |= clSetKernelArg(_kernel, 11, sizeof(cl_mem), (void *)&__seed);
     ret |= clSetKernelArg(_kernel, 12, sizeof(cl_mem), (void *)&__noise);
     ret |= clSetKernelArg(_kernel, 13, sizeof(cl_mem), (void *)&__costs);
+    // =============================== Added by Kaiserreich-Unofficial ===============================
+    // Log-MPPI 开关
+    cl_uint enable_nln_uint = _p.enable_nln ? 1u : 0u; // 必须把bool处理为uint，C语言不支持bool
+    ret |= clSetKernelArg(_kernel, 14, sizeof(cl_uint), (void *)&enable_nln_uint);
+    // 状态权重
+    auto _state_weight = clCreateBuffer(_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                                        _p.state_weights.size() * sizeof(cl_float), _p.state_weights.data(), &ret);
+    ret |= clSetKernelArg(_kernel, 15, sizeof(cl_mem), (void *)&_state_weight);
+    // 输入权重
+    auto _input_weight = clCreateBuffer(_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, _p.input_weights.size() * sizeof(cl_float), _p.input_weights.data(), &ret);
+    ret |= clSetKernelArg(_kernel, 16, sizeof(cl_mem), (void *)&_input_weight);
+
     if (ret != CL_SUCCESS)
         throw std::runtime_error("unable to set OpenCL kernel arguments");
 }
@@ -201,11 +217,11 @@ std::vector<Waypoint> MPPI::run(const std::vector<float> &state,
     /*
     if ((now - _prev_seed_time) >= 5000) {
         _prev_seed_time = now;
-        for (int i=0; i < _K; i++) {
+        for (int i=0; i < _num_rollout; i++) {
             _seed[i] = _dist_seed(_rg_seed);
         }
         ret = clEnqueueWriteBuffer(_queue, __seed, CL_TRUE, 0,
-                                   _K * sizeof(cl_uint), _seed, 0, NULL, NULL);
+                                   _num_rollout * sizeof(cl_uint), _seed, 0, NULL, NULL);
         if (ret != CL_SUCCESS)
             throw std::runtime_error("unable to enqueue OpenCL write buffer");
     }
@@ -214,7 +230,7 @@ std::vector<Waypoint> MPPI::run(const std::vector<float> &state,
     // generate noise
     size_t offset_n = 0;
     /*
-    for (int i=0; i < (_K * _p.N); i++) {
+    for (int i=0; i < (_num_rollout * _p.horizon); i++) {
         _noise[offset_n] = _dist_s(_rg_s);
         _noise[offset_n+1] = _dist_a(_rg_a);
         offset_n += _input_dim;
@@ -259,7 +275,7 @@ std::vector<Waypoint> MPPI::run(const std::vector<float> &state,
         throw std::runtime_error("unable to set OpenCL kernel arguments");
 
     // run kernel
-    ret = clEnqueueNDRangeKernel(_queue, _kernel, 1, NULL, &_K, &_p.local_size, 0, NULL, NULL);
+    ret = clEnqueueNDRangeKernel(_queue, _kernel, 1, NULL, &_num_rollout, &_p.local_size, 0, NULL, NULL);
     if (ret != CL_SUCCESS)
     {
         throw std::runtime_error("unable to enqueue OpenCL kernel");
@@ -269,7 +285,7 @@ std::vector<Waypoint> MPPI::run(const std::vector<float> &state,
     ret = clEnqueueReadBuffer(_queue, __noise, CL_TRUE, 0,
                               _noise_size * sizeof(cl_float), _noise, 0, NULL, NULL);
     ret |= clEnqueueReadBuffer(_queue, __costs, CL_TRUE, 0,
-                               _K * sizeof(cl_float), _costs, 0, NULL, NULL);
+                               _num_rollout * sizeof(cl_float), _costs, 0, NULL, NULL);
     if (ret != CL_SUCCESS)
     {
         throw std::runtime_error("unable to enqueue OpenCL read buffer");
@@ -277,28 +293,28 @@ std::vector<Waypoint> MPPI::run(const std::vector<float> &state,
 
     // compute min cost
     double min_cost = std::numeric_limits<double>::max();
-    for (int i = 0; i < _K; i++)
+    for (int i = 0; i < _num_rollout; i++)
     {
         if (_costs[i] < min_cost)
             min_cost = _costs[i];
     }
     // compute weights in double precision
-    auto weights = std::vector<double>(_K);
-    for (int i = 0; i < _K; i++)
+    auto weights = std::vector<double>(_num_rollout);
+    for (int i = 0; i < _num_rollout; i++)
     {
         weights[i] = exp((-1.0 / _p.lambda) * (_costs[i] - min_cost));
     }
 
     // compute the sum of the weights
     double sum_weights = 0.0;
-    for (int i = 0; i < _K; i++)
+    for (int i = 0; i < _num_rollout; i++)
     {
         sum_weights += weights[i];
     }
     // normalize the weights
     if (sum_weights != 0.0)
     {
-        for (int i = 0; i < _K; i++)
+        for (int i = 0; i < _num_rollout; i++)
         {
             weights[i] = weights[i] / sum_weights;
         }
@@ -307,9 +323,9 @@ std::vector<Waypoint> MPPI::run(const std::vector<float> &state,
     // update nominal input
     size_t offset_i = 0;
     offset_n = 0;
-    for (int i = 0; i < _p.N; i++)
+    for (int i = 0; i < _p.horizon; i++)
     {
-        for (int j = 0; j < _K; j++)
+        for (int j = 0; j < _num_rollout; j++)
         {
             _inputs[offset_i] += weights[j] * _noise[offset_n];
             _inputs[offset_i + 1] += weights[j] * _noise[offset_n + 1];
@@ -321,7 +337,7 @@ std::vector<Waypoint> MPPI::run(const std::vector<float> &state,
     // Savitzky–Golay filter on input
     std::vector<float> inputs(_inputs_size);
     offset_i = 0;
-    for (int i = 0; i < _p.N; i++)
+    for (int i = 0; i < _p.horizon; i++)
     {
         for (int j = 0; j < _input_dim; j++)
         {
@@ -338,13 +354,13 @@ std::vector<Waypoint> MPPI::run(const std::vector<float> &state,
             }
 
             double y_p_1 = 0.0;
-            if (i < (_p.N - 1))
+            if (i < (_p.horizon - 1))
             {
                 y_p_1 = _inputs[offset_i + (1 * _input_dim) + j];
             }
 
             double y_p_2 = 0.0;
-            if (i < (_p.N - 2))
+            if (i < (_p.horizon - 2))
             {
                 y_p_2 = _inputs[offset_i + (2 * _input_dim) + j];
             }
@@ -368,7 +384,7 @@ std::vector<Waypoint> MPPI::run(const std::vector<float> &state,
 
     std::vector<Waypoint> trajectory;
 
-    for (size_t i = 0; i < _p.N; i++)
+    for (size_t i = 0; i < _p.horizon; i++)
     {
         float Tl = _inputs[offset_i];
         float Tr = _inputs[offset_i + 1];
@@ -449,9 +465,9 @@ std::vector<Waypoint> MPPI::run(const std::vector<float> &state,
     {
         _prev_time = now;
         offset_i = 0;
-        for (int i = 0; i < _p.N; i++)
+        for (int i = 0; i < _p.horizon; i++)
         {
-            if (i == (_p.N - 1))
+            if (i == (_p.horizon - 1))
             {
                 //_inputs[offset_i] = 0.0f;
                 //_inputs[offset_i+1] = 0.0f;
