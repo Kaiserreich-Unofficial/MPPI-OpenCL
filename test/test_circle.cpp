@@ -34,7 +34,7 @@ int main()
 
     // ------------------ 2. 初始化 MPPI ------------------
     mppi::Params params;
-    params.N = 50;           // 预测步数
+    params.horizon = 50;           // 预测步数
     params.delta = dt;       // 每步时间
     params.local_size = 128; // OpenCL local size
     params.multiplier = 16;  // 样本数倍增

@@ -9,6 +9,7 @@
 #include <CL/cl.h>
 #include <vector>
 #include <random>
+#include <array>
 
 namespace mppi
 {
@@ -33,8 +34,8 @@ namespace mppi
         float safe_dist_coef = 1.5; // 障碍物安全距离系数
         float safe_dist_min = 1.5;  // 障碍物最小安全距离
         bool enable_nln = false;
-        float state_weights[6] = {100.0f, 100.0f, 1.0f, .1f, .1f, .1f};
-        float input_weights[2] = {1e-5, 1e-5};
+        std::array<float, 6> state_weights = {100.0f, 100.0f, 1.0f, .1f, .1f, .1f};
+        std::array<float, 2> input_weights = {1e-5, 1e-5};
     } Params;
 
     class Waypoint
