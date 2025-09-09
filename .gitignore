@@ -1,0 +1,23 @@
+# CMake Generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
+# C++ compiler generated files
+*.o
+*.d
+*.so
+*.so.*
+*.dylib
+*.dylib.*
+*.dll
+*.dll.a
+*.lib
+
+# Python generated files
+__pycache__/
+
+# CMake Directories
+build/
+
+
