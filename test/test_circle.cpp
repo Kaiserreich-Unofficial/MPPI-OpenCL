@@ -11,7 +11,7 @@ int main()
     float radius = 6.0f;   // 圆半径
     float omega = 0.1f;    // 角速度 rad/s
     float dt = 0.05f;      // 仿真步长
-    int N_waypoints = 200; // 总步数
+    int N_waypoints = 2000; // 总步数
     std::vector<float> waypoints;
     uint waypoint_dim = 6; // x, y, psi, u, v, r
 
@@ -56,7 +56,7 @@ int main()
 
     // ------------------ 5. 运行仿真 ------------------
     std::vector<double> optimize_times;
-    int sim_steps = 200;
+    int sim_steps = 2000;
 
     for (int step = 0; step < sim_steps; step++)
     {

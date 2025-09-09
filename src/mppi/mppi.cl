@@ -3,7 +3,7 @@
  * Copyright (c) 2024 University of Luxembourg
  */
 
-#define M_PI 3.1415927
+#define M_PI 3.1415927f
 
 // private version
 float get_noise(uint *seed, float mean, float std) {
@@ -210,7 +210,6 @@ mppi(uint horizon, __constant float *params, __constant float *state,
     r += delta / 6.0f * (k1[5] + 2 * k2[5] + 2 * k3[5] + k4[5]);
 
     // 三元运算裁剪到 [0, 2*pi]
-    const float M_PI = 3.1415927f;
     psi = (psi >= 2.0f * M_PI) ? (psi - 2.0f * M_PI)
                                : ((psi < 0.0f) ? (psi + 2.0f * M_PI) : psi);
 
