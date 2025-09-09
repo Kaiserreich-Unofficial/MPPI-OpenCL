@@ -34,7 +34,7 @@ namespace mppi
         float safe_dist_coef = 1.5; // 障碍物安全距离系数
         float safe_dist_min = 1.5;  // 障碍物最小安全距离
         bool enable_nln = false;
-        std::array<float, 6> state_weights = {100.0f, 100.0f, 1.0f, .1f, .1f, .1f};
+        std::array<float, 6> state_weights = {10.0f, 10.0f, 1.0f, 10.f, .1f, 10.f};
         std::array<float, 2> input_weights = {1e-5, 1e-5};
     } Params;
 

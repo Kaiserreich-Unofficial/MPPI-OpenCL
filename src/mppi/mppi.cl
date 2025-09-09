@@ -3,7 +3,7 @@
  * Copyright (c) 2024 University of Luxembourg
  */
 
-#define M_PI 3.1415927
+#define M_PI 3.1415927f
 
 // private version
 float get_noise(uint *seed, float mean, float std) {
