@@ -210,10 +210,37 @@ mppi(uint horizon, __constant float *params, __constant float *state,
     r += delta / 6.0f * (k1[5] + 2 * k2[5] + 2 * k3[5] + k4[5]);
 
     // 三元运算裁剪到 [0, 2*pi]
-    const float M_PI = 3.1415927f;
     psi = (psi >= 2.0f * M_PI) ? (psi - 2.0f * M_PI)
                                : ((psi < 0.0f) ? (psi + 2.0f * M_PI) : psi);
 
+    // --- compute per-step cost: compare to appropriate waypoint
+    // choose a look-ahead waypoint index; here we simply use i-th ahead from
+    // start (clamped to last)
+    uint wp_idx = (i < nb_waypoints) ? i : (nb_waypoints - 1);
+    uint base_wp = wp_idx * waypoint_dim;
+
+    // state error (x,y,psi,u,v,r)
+    float diff_s0 = x - waypoints[base_wp + 0];
+    float diff_s1 = y - waypoints[base_wp + 1];
+    float diff_s2 = psi - waypoints[base_wp + 2];
+    float diff_s3 = u - waypoints[base_wp + 3];
+    float diff_s4 = v - waypoints[base_wp + 4];
+    float diff_s5 = r - waypoints[base_wp + 5];
+
+    // accumulate weighted state cost
+    cost += state_weights[0] * diff_s0 * diff_s0;
+    cost += state_weights[1] * diff_s1 * diff_s1;
+    cost += state_weights[2] * diff_s2 * diff_s2;
+    cost += state_weights[3] * diff_s3 * diff_s3;
+    cost += state_weights[4] * diff_s4 * diff_s4;
+    cost += state_weights[5] * diff_s5 * diff_s5;
+
+    // accumulate input cost for this timestep (assume input_weights length ==
+    // input_dim)
+    cost += input_weights[0] * (Tl * Tl);
+    cost += input_weights[1] * (Tr * Tr);
+
+    // advance input offset
     offset_i += input_dim;
   }
 
@@ -228,39 +255,6 @@ mppi(uint horizon, __constant float *params, __constant float *state,
 
   float target_safe_dist = safe_dist_coef * u + safe_dist_min;
   float safe_dist = fmax(target_safe_dist - min_obj_d, 0.0f);
-
-  // 假设 object_dim = 状态维度，state_weights 是 __constant float*，长度 =
-  // object_dim
-  for (uint s = 0; s < object_dim; s++) {
-    float diff = 0.0f;
-    switch (s) {
-    case 0:
-      diff = x - waypoints[(nb_waypoints - 1) * waypoint_dim + 0];
-      break;
-    case 1:
-      diff = y - waypoints[(nb_waypoints - 1) * waypoint_dim + 1];
-      break;
-    case 2:
-      diff = psi - waypoints[(nb_waypoints - 1) * waypoint_dim + 2];
-      break;
-    case 3:
-      diff = u - waypoints[(nb_waypoints - 1) * waypoint_dim + 3];
-      break;
-    case 4:
-      diff = v - waypoints[(nb_waypoints - 1) * waypoint_dim + 4];
-      break;
-    case 5:
-      diff = r - waypoints[(nb_waypoints - 1) * waypoint_dim + 5];
-      break;
-    default:
-      diff = 0.0f;
-      break;
-    }
-    cost += state_weights[s] * diff * diff;
-  }
-
-  // 输入权重
-  cost += input_weights[0] * Tl * Tl + input_weights[1] * Tr * Tr;
 
   // 保留 obstacle / safe distance
   // cost += 15.0f * fmax(0.0f, -min_obj_d) * fmax(0.0f, -min_obj_d);
